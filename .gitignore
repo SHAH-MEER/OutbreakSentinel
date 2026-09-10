@@ -18,8 +18,9 @@ venv/
 infra/**/.terraform/
 infra/**/*.tfstate
 infra/**/*.tfstate.backup
-infra/**/.terraform.lock.hcl
 infra/**/terraform.tfvars
+# .terraform.lock.hcl is intentionally NOT ignored — it pins provider
+# versions and should be committed.
 
 # Data (raw pulls can be large / regenerable — keep sample only)
 data/raw/*

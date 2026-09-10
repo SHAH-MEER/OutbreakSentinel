@@ -5,6 +5,12 @@ deviation), segments it with `ruptures` (PELT, L2 cost), and flags any
 segment whose mean deviates from the series-wide median by more than
 k * MAD as anomalous. Segment-relative severity puts both a single sharp
 spike and a sustained elevated plateau on a comparable scale.
+
+Note: `ruptures.Pelt` defaults to `jump=5` (only every 5th index is
+considered as a candidate breakpoint, for speed on long signals). That
+default silently blinds detection to single-week resolution — exactly the
+case that matters most for "is *this week* anomalous" — so `_segments`
+below explicitly passes `jump=1`.
 """
 from __future__ import annotations
 
@@ -23,7 +29,11 @@ def _mad_scale(values: np.ndarray) -> tuple[float, float]:
 def _segments(standardized: np.ndarray, pen_scale: float) -> list[tuple[int, int]]:
     n = len(standardized)
     penalty = pen_scale * np.log(max(n, 2))
-    algo = rpt.Pelt(model="l2").fit(standardized.reshape(-1, 1))
+    # jump=1: ruptures' Pelt defaults to jump=5, i.e. it only considers
+    # changepoints every 5th week. That's a 4-week blind spot in exactly
+    # the case we care about most — a brand-new anomaly in the most
+    # recent week(s) of a series.
+    algo = rpt.Pelt(model="l2", jump=1).fit(standardized.reshape(-1, 1))
     bkps = algo.predict(pen=penalty)
     starts = [0] + bkps[:-1]
     return list(zip(starts, bkps))

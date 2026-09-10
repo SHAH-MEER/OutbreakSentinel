@@ -18,3 +18,20 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run tests
         run: pytest tests/ -v
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+      - name: terraform fmt (check only)
+        run: terraform fmt -check -recursive
+      - name: terraform init (no backend, no AWS credentials needed)
+        run: terraform init -backend=false
+      - name: terraform validate
+        run: terraform validate
