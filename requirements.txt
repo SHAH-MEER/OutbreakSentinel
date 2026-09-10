@@ -1,0 +1,16 @@
+pandas
+numpy
+requests
+statsmodels
+ruptures
+scikit-learn
+matplotlib
+plotly
+folium
+streamlit
+fastapi
+mangum
+uvicorn
+boto3
+pytest
+pytest-cov
