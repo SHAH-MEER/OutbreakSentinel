@@ -29,3 +29,7 @@ output "api_endpoint" {
 output "dashboard_url" {
   value = "https://${aws_apprunner_service.dashboard.service_url}"
 }
+
+output "ops_alerts_topic_arn" {
+  value = aws_sns_topic.alerts.arn
+}

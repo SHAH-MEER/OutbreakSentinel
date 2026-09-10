@@ -1,0 +1,90 @@
+name: Deploy
+
+# Runs after CI passes on main — "test -> deploy on merge". Uses
+# workflow_run (not a second job in ci.yml) so this stays a separate,
+# independently reviewable file, and only ever fires once CI has
+# actually succeeded on main, never on a PR from a fork.
+#
+# THIS WORKFLOW DOES NOTHING UNTIL REAL, ONE-TIME SETUP IS DONE — see
+# infra/README.md's "CI/CD prerequisites" section:
+#   1. Bootstrap the S3 remote state backend (infra/backend.tf) —
+#      required so a fresh CI checkout doesn't try to recreate
+#      everything from scratch every run.
+#   2. Create an AWS IAM role trusting GitHub's OIDC provider, and set
+#      its ARN as the AWS_DEPLOY_ROLE_ARN repo secret.
+#   3. Set the TF_STATE_BUCKET / TF_STATE_LOCK_TABLE / AWS_REGION repo
+#      variables to match step 1.
+#   4. Push the pipeline/dashboard images at least once manually (the
+#      two-step ECR bootstrap in infra/README.md) so the Lambda/App
+#      Runner resources this creates on the FIRST apply have an image
+#      to reference.
+# Without all four, this workflow fails at the credentials or
+# terraform init step — it does not fall back to doing something
+# unsafe.
+#
+# Also worth knowing: add required reviewers to a "production"
+# GitHub Environment (repo Settings -> Environments) to gate this
+# behind manual approval, since it applies real infrastructure changes.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  id-token: write # for OIDC AWS credential exchange — no long-lived AWS keys stored in the repo
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+
+      - name: Terraform init (remote state)
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=outbreak-sentinel/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_STATE_LOCK_TABLE }}"
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push pipeline image
+        working-directory: .
+        run: |
+          docker build -f infra/docker/Dockerfile -t pipeline .
+          docker tag pipeline:latest ${{ steps.ecr-login.outputs.registry }}/outbreak-sentinel-pipeline:${{ github.sha }}
+          docker push ${{ steps.ecr-login.outputs.registry }}/outbreak-sentinel-pipeline:${{ github.sha }}
+
+      - name: Build and push dashboard image
+        working-directory: .
+        run: |
+          docker build -f dashboard/Dockerfile -t dashboard .
+          docker tag dashboard:latest ${{ steps.ecr-login.outputs.registry }}/outbreak-sentinel-dashboard:${{ github.sha }}
+          docker push ${{ steps.ecr-login.outputs.registry }}/outbreak-sentinel-dashboard:${{ github.sha }}
+
+      - name: Terraform apply
+        run: |
+          terraform apply -auto-approve \
+            -var "lambda_image_tag=${{ github.sha }}" \
+            -var "dashboard_image_tag=${{ github.sha }}"

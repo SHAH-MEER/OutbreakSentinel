@@ -39,6 +39,19 @@ variable "alert_pipeline_schedule" {
   default     = "cron(0 13 ? * TUE *)"
 }
 
+variable "notification_email" {
+  description = <<-EOT
+    Email address to subscribe to the ops SNS topic (infra/cloudwatch.tf)
+    that pipeline/API failure alarms publish to. Leave as "" (default) to
+    skip creating a subscription — the alarms still fire and are visible
+    in the CloudWatch console, they just have nowhere to page. Note AWS
+    requires the address to confirm the subscription via a link in an
+    email SNS sends after apply, before it actually receives anything.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "detect_shard_count" {
   description = <<-EOT
     Number of parallel Detect Lambda invocations the Step Functions Map

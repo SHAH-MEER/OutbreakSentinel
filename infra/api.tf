@@ -111,6 +111,8 @@ resource "aws_cloudwatch_metric_alarm" "api_lambda_errors" {
   threshold           = 5
   treat_missing_data  = "notBreaching"
   alarm_description   = "Fires when the API Lambda errors out repeatedly in an hour."
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
 
   dimensions = {
     FunctionName = aws_lambda_function.api.function_name
