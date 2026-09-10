@@ -1,0 +1,6 @@
+# Dashboard-only dependencies (App Runner image — dashboard/Dockerfile).
+# The dashboard only talks to the API over HTTP, never to AWS directly,
+# so no boto3/pandas/etc. here.
+streamlit
+plotly
+requests

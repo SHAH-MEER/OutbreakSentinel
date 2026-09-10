@@ -6,7 +6,7 @@ now* — a different problem from forecasting what they'll be next.
 
 ## Status
 
-Phase 3 (AWS pipeline + Terraform) in progress.
+Phase 4 (API + dashboard) in progress.
 
 - [x] Data source selected: CDC NNDSS Weekly Data (state-level, 139
       notifiable diseases, 2022–present) — see [data/README.md](data/README.md)
@@ -53,7 +53,25 @@ Phase 3 (AWS pipeline + Terraform) in progress.
       `terraform validate` passes; **not yet deployed** (deploying
       creates real, billable AWS resources — see
       [infra/README.md](infra/README.md) before running `apply`)
-- [ ] API + dashboard — Phase 4
+- [x] API (`api/main.py`, FastAPI + Mangum) serving current alerts
+      (`/alerts`) and per-series history with the anomaly overlay
+      (`/series`) — DynamoDB/S3 in production, a local-dev fallback that
+      computes alerts on the fly otherwise (see
+      [infra/README.md](infra/README.md#local-development-no-aws-needed)).
+      API Gateway (HTTP API) + Lambda authored in Terraform, with its own
+      least-privilege (read-only) IAM role.
+- [x] Dashboard (`dashboard/app.py`, Streamlit) — live US choropleth
+      colored by peak severity, click a state (or use the dropdowns) to
+      see its time series with flagged anomalies overlaid, and a
+      sortable alert feed table. Only talks to the API over HTTP, never
+      to AWS directly. Verified rendering and the map-click interaction
+      end-to-end in a real browser (Playwright) before calling this
+      done — see the screenshot check in this phase's session. App
+      Runner authored in Terraform (its own container image, since it's
+      a long-running server, not a Lambda) — **not yet deployed**, and
+      unlike the rest of this stack, App Runner bills for always-on
+      compute, so see the cost note in
+      [infra/README.md](infra/README.md#cost-note) before applying.
 - [ ] CI/CD, monitoring, docs — Phase 5 (CI now also runs
       `terraform validate` on every push)
 
@@ -61,11 +79,11 @@ Phase 3 (AWS pipeline + Terraform) in progress.
 
 ```text
 outbreak-sentinel/
-├── data/          # ingestion scripts
-├── detection/      # model + backtesting
-├── api/            # FastAPI/Lambda handler
-├── dashboard/      # Streamlit app
-├── infra/          # Terraform
+├── data/       # ingestion scripts
+├── detection/  # model + backtesting
+├── api/        # FastAPI/Lambda handler
+├── dashboard/  # Streamlit app
+├── infra/      # Terraform
 ├── tests/
 └── .github/workflows/
 ```
@@ -77,4 +95,8 @@ pip install -r requirements.txt
 python data/ingest_nndss.py   # pulls raw data -> data/raw/
 python data/eda.py            # builds tidy panel -> data/processed/
 pytest tests/
+
+# API + dashboard (no AWS needed — see infra/README.md)
+uvicorn api.main:app --reload --port 8010
+API_BASE_URL=http://127.0.0.1:8010 streamlit run dashboard/app.py
 ```

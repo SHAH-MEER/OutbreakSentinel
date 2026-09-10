@@ -1,18 +1,21 @@
 # Build context must be the repo root (not this directory), since the
-# ingest/process/detect Lambdas share this one image and need both
-# data/ and detection/ from the top of the repo:
+# ingest/process/detect/api Lambdas share this one image and need
+# data/, detection/, and api/ from the top of the repo:
 #
 #   docker build -f infra/docker/Dockerfile -t outbreak-sentinel-pipeline .
 #
 # Which handler runs is chosen per-Lambda in Terraform via
-# image_config.command (see infra/lambda.tf), not by this Dockerfile.
+# image_config.command (see infra/lambda.tf, infra/api.tf), not by this
+# Dockerfile. The dashboard is NOT part of this image — it's a
+# long-running server (App Runner), not a Lambda; see dashboard/Dockerfile.
 FROM public.ecr.aws/lambda/python:3.12
 
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+COPY infra/docker/requirements-lambda.txt ${LAMBDA_TASK_ROOT}/requirements.txt
 RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
 COPY data/ ${LAMBDA_TASK_ROOT}/data/
 COPY detection/ ${LAMBDA_TASK_ROOT}/detection/
+COPY api/ ${LAMBDA_TASK_ROOT}/api/
 COPY infra/lambda_app/ ${LAMBDA_TASK_ROOT}/infra/lambda_app/
 
 CMD ["infra.lambda_app.handlers.ingest_handler"]

@@ -1,0 +1,14 @@
+# Dependencies for the shared ingest/process/detect/api Lambda image
+# (infra/docker/Dockerfile) — deliberately narrower than the top-level
+# requirements.txt, which also covers local dev, the dashboard
+# (streamlit/plotly), and testing (pytest). Keeping this list to only
+# what infra/lambda_app/handlers.py and api/ actually import keeps the
+# image smaller and the cold start faster.
+pandas
+numpy
+requests
+statsmodels
+ruptures
+fastapi
+mangum
+boto3

@@ -22,6 +22,17 @@ variable "lambda_image_tag" {
   default     = "latest"
 }
 
+variable "dashboard_image_tag" {
+  description = <<-EOT
+    Tag of the dashboard image already pushed to aws_ecr_repository.dashboard.
+    Same bootstrap ordering caveat as lambda_image_tag: push an image with
+    this tag before the first `terraform apply` that creates the App
+    Runner service. See infra/README.md.
+  EOT
+  type        = string
+  default     = "latest"
+}
+
 variable "alert_pipeline_schedule" {
   description = "EventBridge cron expression for the weekly ingestion run. Default: Tuesdays 13:00 UTC, after CDC's typical weekly NNDSS refresh."
   type        = string
