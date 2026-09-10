@@ -57,7 +57,7 @@ def process_handler(event, context):
 
 
 def detect_handler(event, context):
-    """Run the changepoint detector over this shard's slice of series and
+    """Run the STL-residual detector over this shard's slice of series and
     write flagged anomalies for the latest week to DynamoDB.
 
     `shard_index`/`num_shards` come from the Step Functions Map state

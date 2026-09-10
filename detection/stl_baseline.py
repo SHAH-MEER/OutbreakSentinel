@@ -16,13 +16,30 @@ SEASONAL_PERIOD = 52
 MIN_STL_LEN = 2 * SEASONAL_PERIOD
 
 
+# NNDSS counts are whole cases, so no real, meaningful week-to-week
+# variation is smaller than 1 case. A scale below this is either exact-
+# zero (a genuinely constant series), STL floating-point noise (~1e-11,
+# on a near-constant series), or — found via a real example at exactly
+# MIN_STL_LEN=104 — a near-degenerate STL fit that isn't literally
+# floating-point noise but is just as meaningless: at exactly 2 seasonal
+# cycles, the smoother has only 2 points per phase bin to fit and can
+# nearly interpolate through most of a sparse series, leaving a highly
+# bimodal residual whose IQR straddles near-zero for most points (~1e-5
+# here, not ~1e-11, so a small epsilon check doesn't catch it — an
+# unconditional floor on the final scale does). Any of these, used
+# directly as a severity denominator, produces scores in the thousands
+# to billions for a real but modest case-count bump (see
+# detection/README.md) — meaningless, and dashboard-breaking.
+NOISE_FLOOR_SCALE = 1.0
+
+
 def _iqr_scale(residual: pd.Series, k: float) -> tuple[float, float]:
     q1, q3 = residual.quantile([0.25, 0.75])
     iqr = q3 - q1
-    if iqr == 0:
-        mad = (residual - residual.median()).abs().median()
-        iqr = mad if mad > 0 else 1.0
-    return -k * iqr, k * iqr
+    if iqr <= 0:
+        iqr = (residual - residual.median()).abs().median()
+    scale = max(iqr, NOISE_FLOOR_SCALE)
+    return -k * scale, k * scale
 
 
 def detect(series: pd.Series, k: float = 3.0) -> pd.DataFrame:

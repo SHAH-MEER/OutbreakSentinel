@@ -21,10 +21,28 @@ def load_latest_raw() -> pd.DataFrame:
     return df
 
 
+def normalize_region_casing(panel: pd.DataFrame) -> pd.DataFrame:
+    """CDC's NNDSS feed silently changed region-name casing convention at
+    the 2024->2025 boundary — ALL CAPS through 2024 ("TEXAS"), Title Case
+    from 2025 on ("Texas") — for the exact same underlying region. Left
+    alone, every region whose history spans that boundary gets treated as
+    two different regions by every downstream groupby (detection, alerts,
+    the map), which either splits/truncates its series or duplicates it
+    on a map. Canonicalize to whichever casing each region used in its
+    *most recent* week, since that's the convention future ingestion will
+    keep using."""
+    ordered = panel.sort_values(["year", "week"])
+    canonical = ordered.groupby(ordered["region"].str.lower())["region"].last()
+    panel = panel.copy()
+    panel["region"] = panel["region"].str.lower().map(canonical)
+    return panel
+
+
 def build_panel(df: pd.DataFrame) -> pd.DataFrame:
     """Tidy weekly panel: one row per (state, disease, year, week)."""
     keep = ["states", "label", "year", "week", "m1"]
     panel = df[keep].rename(columns={"states": "region", "label": "disease", "m1": "cases"})
+    panel = normalize_region_casing(panel)
     panel = panel.sort_values(["region", "disease", "year", "week"]).reset_index(drop=True)
     return panel
 
@@ -48,7 +66,7 @@ def check_known_outbreaks(panel: pd.DataFrame) -> None:
 
     print("\n=== Candidate backtest event 2: 2024 national pertussis resurgence ===")
     pertussis_national = panel[
-        (panel.region == "TOTAL") & (panel.disease == "Pertussis")
+        (panel.region == "Total") & (panel.disease == "Pertussis")
     ]
     yearly = pertussis_national.groupby("year")["cases"].sum()
     print(yearly.to_string())

@@ -31,16 +31,16 @@ variable "alert_pipeline_schedule" {
 variable "detect_shard_count" {
   description = <<-EOT
     Number of parallel Detect Lambda invocations the Step Functions Map
-    state fans out into. Scoring the full NNDSS panel (~17.6k series) in
-    one invocation was benchmarked at ~789s even maxing out a single
-    Lambda's process pool (6 vCPUs, the ceiling at max Lambda memory) —
-    too close to the 900s hard timeout to trust once real Lambda vCPUs
-    (usually slower per-core than a dev machine) and cold starts are
-    factored in. Sharding the panel across this many independent
+    state fans out into. Scoring the full NNDSS panel (~10.2k series,
+    after fixing a region-name casing bug — see data/README.md) in one
+    invocation was benchmarked at ~884s serially — over half of the 900s
+    hard timeout on its own, before any of the usual production margin
+    (real Lambda vCPUs are typically slower per-core than a dev machine;
+    cold starts add more). Sharding across this many independent
     invocations (see detection/run_detection.py's series_shard) gives each
-    one a comfortable safety margin instead. 10 shards puts each
-    invocation's estimated runtime around 200s at 2 vCPUs (see
-    detection/README.md) — ~4x margin under the cap.
+    one a large safety margin instead: at 10 shards and 2 vCPUs per
+    invocation, each shard's estimated runtime is well under 100s against
+    a 300s per-function timeout (see detection/README.md).
   EOT
   type        = number
   default     = 10

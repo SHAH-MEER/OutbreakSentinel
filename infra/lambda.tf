@@ -47,12 +47,12 @@ resource "aws_lambda_function" "detect" {
   package_type  = "Image"
   image_uri     = local.image_uri
   # Each invocation scores one shard (~1/detect_shard_count of the
-  # panel's ~17.6k series — see infra/step_functions.tf and
+  # panel's ~10.2k series — see infra/step_functions.tf and
   # variables.tf), not the whole panel, so this has a large safety
-  # margin under Lambda's 900s cap rather than the ~789s-of-900s a
-  # single unsharded invocation benchmarked at. 3008MB ~= 2 vCPUs,
-  # matching run_detection.py's default process-pool width for a shard
-  # this size.
+  # margin under Lambda's 900s cap rather than the ~884s-of-900s a
+  # single unsharded invocation benchmarked at (serially). 3008MB ~= 2
+  # vCPUs, matching run_detection.py's default process-pool width for a
+  # shard this size.
   timeout     = 300
   memory_size = 3008
 

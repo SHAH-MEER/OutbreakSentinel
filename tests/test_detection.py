@@ -34,6 +34,22 @@ def test_stl_uses_seasonal_decomposition_for_long_series():
     assert result.loc[150, "anomaly"]
 
 
+def test_stl_severity_is_bounded_on_near_constant_sparse_series():
+    # Regression test: a long, mostly-zero rare-disease series (real
+    # example: Q fever in a low-incidence region) makes STL's residual
+    # floating-point noise on the order of 1e-11 for most weeks. Before
+    # the NOISE_FLOOR_SCALE fix, that noise was used directly as the
+    # scale, producing severity scores in the hundreds of billions for
+    # a real but modest 3-case bump — meaningless and dashboard-breaking.
+    rng = np.random.default_rng(2)
+    values = rng.choice([0.0, 0.0, 0.0, 0.0, 1.0], size=243).tolist() + [3.0]
+    series = pd.Series(values)
+
+    result = stl_baseline.detect(series, k=3.0)
+    assert result.attrs["method"] == "stl"
+    assert result["severity"].max() < 1000
+
+
 def test_changepoint_flags_sustained_mean_shift():
     baseline = [10.0] * 40
     surge = [60.0] * 20

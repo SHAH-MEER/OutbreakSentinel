@@ -1,22 +1,29 @@
 """Production detection driver.
 
-Runs the changepoint detector (the method chosen in Phase 2's head-to-head
-benchmark — see detection/README.md) over every (region, disease) series
-in the latest processed panel, and returns the anomalies flagged in the
-*most recent* MMWR week for each series — i.e. "is this week's pull
-anomalous," which is what a weekly production run cares about, not the
-whole history (that's what detection/backtest.py is for).
+Runs the STL-residual detector (the method chosen in Phase 2's
+head-to-head benchmark — see detection/README.md) over every (region,
+disease) series in the latest processed panel, and returns the anomalies
+flagged in the *most recent* MMWR week for each series — i.e. "is this
+week's pull anomalous," which is what a weekly production run cares
+about, not the whole history (that's what detection/backtest.py is for).
+
+Note this was changepoint detection through most of Phase 2/3 — a region-
+name casing bug (see data/README.md) was truncating backtest series short
+enough that STL couldn't run its real seasonal decomposition and fell
+back to a crude rolling-median mode, making it look structurally unable
+to catch gradual surges. Fixing that bug let STL run properly, and it
+now generalizes better (consistent 1-week detection latency on both
+backtest events vs. changepoint's holdout latency of "never, within 12
+weeks") — see detection/README.md for the full reversal writeup.
 
 Parallelized across processes, AND shardable across separate Lambda
-invocations: with the `jump=1` correctness fix in changepoint.py (see
-detection/README.md), scoring is CPU-heavy enough that serially scoring
-the full panel (~17.6k series) takes 50+ minutes — well past a Lambda's
-900s hard cap. Benchmarking showed a single Lambda maxing out its process
-pool (6 vCPUs, the practical ceiling at max Lambda memory) still only gets
-to ~789s — too close to the cap to trust once real Lambda vCPUs (usually
-slower per-core than a dev machine) and cold-start overhead are factored
-in. So the real fix is sharding: `infra/step_functions.tf` fans out a Map
-state across `num_shards` parallel Lambda invocations, each scoring a
+invocations: scoring is CPU-heavy enough that serially scoring the full
+panel (~10.2k series, corrected) takes ~15 minutes — over half of a
+Lambda's 900s hard cap on its own, before any of the usual production
+margin (real Lambda vCPUs are typically slower per-core than a dev
+machine; cold starts add more). So this is sharded exactly like
+changepoint detection was: `infra/step_functions.tf` fans out a Map state
+across `num_shards` parallel Lambda invocations, each scoring a
 `num_shards`-fraction of the panel (selected by `shard_index`/`num_shards`
 below) — comfortably under the timeout per invocation, with a large
 safety margin instead of a razor-thin one.
@@ -36,7 +43,7 @@ from functools import partial
 import numpy as np
 import pandas as pd
 
-from detection.changepoint import detect
+from detection.stl_baseline import detect
 
 MIN_SERIES_LEN = 8  # too few points for segmentation to mean anything
 
@@ -59,7 +66,7 @@ def _score_one(
 ) -> dict | None:
     region, disease, years, weeks, cases = item
     series = pd.Series(cases, dtype=float)
-    result = detect(series)
+    result = detect(series, k=3.0)
     latest_idx = len(series) - 1
     if not bool(result.loc[latest_idx, "anomaly"]):
         return None
@@ -72,7 +79,7 @@ def _score_one(
         "week": int(weeks[-1]),
         "cases": float(cases[-1]),
         "severity": float(result.loc[latest_idx, "severity"]),
-        "method": "changepoint",
+        "method": "stl",
         "detected_at": run_date_iso,
     }
 

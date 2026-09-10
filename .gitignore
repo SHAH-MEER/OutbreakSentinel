@@ -32,3 +32,6 @@ data/processed/*
 .DS_Store
 .vscode/
 *.log
+
+# Claude Code local tooling state (not project content)
+.claude/

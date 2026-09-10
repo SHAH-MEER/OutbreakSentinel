@@ -24,7 +24,7 @@ def test_flags_series_with_anomalous_latest_week():
     assert alert["region_disease"] == "Texas#Measles, Indigenous"
     assert alert["week_id"] == "2024-W21"
     assert alert["cases"] == 80.0
-    assert alert["method"] == "changepoint"
+    assert alert["method"] == "stl"
 
 
 def test_does_not_flag_stable_series():

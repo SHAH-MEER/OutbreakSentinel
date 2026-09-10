@@ -7,7 +7,7 @@ EventBridge (weekly cron)
   -> Step Functions: Ingest Lambda -> Process Lambda -> Map(Detect Lambda x detect_shard_count)
        Ingest:  pulls latest CDC NNDSS data -> S3 raw zone
        Process: raw JSON -> tidy weekly panel -> S3 processed zone
-       Detect:  changepoint detection over this shard's series -> DynamoDB alerts
+       Detect:  STL-residual detection over this shard's series -> DynamoDB alerts
                 (fanned out across detect_shard_count parallel invocations —
                 see the note on detect_shard_count below for why)
   -> CloudWatch alarms on Step Functions / Lambda failures
@@ -16,17 +16,19 @@ EventBridge (weekly cron)
 All three pipeline Lambdas share one container image (different
 `image_config.command` per function) because they need pandas, numpy,
 statsmodels, and ruptures — well over the ~250MB unzipped limit for a
-plain zip-based Lambda package.
+plain zip-based Lambda package. (`ruptures` is a dependency of
+`detection/changepoint.py`, the documented alternative method — see
+detection/README.md — not the one that ships in `run_detection.py`; it's
+still in the shared image so the Detect Lambda's dependencies match what
+gets tested and could be swapped back in without a rebuild.)
 
 **Why Detect is sharded, not one invocation**: scoring every series in
-the panel (~17.6k) needs `ruptures`' PELT changepoint detection with
-`jump=1` (see detection/README.md — the default `jump=5` misses
-single-week resolution, which matters most for "is *this* week
-anomalous"). That's expensive enough that one Lambda maxing out its
-process pool still only got the estimated full-panel runtime down to
-~789s in local benchmarking — too close to the 900s hard cap once real
-Lambda vCPUs (typically slower per-core than a dev machine) and cold
-starts are accounted for. The Step Functions Map state
+the panel (~10.2k, after fixing a region-name casing bug that had been
+silently splitting most states' history in two — see data/README.md)
+with STL seasonal decomposition was benchmarked at ~884s serially — over
+half of the 900s hard cap on its own, before any of the usual production
+margin (real Lambda vCPUs are typically slower per-core than a dev
+machine; cold starts add more). The Step Functions Map state
 (`infra/step_functions.tf`) instead fans out `detect_shard_count`
 (default 10) parallel invocations, each scoring a disjoint ~1/10th of the
 panel via a stable hash partition (`detection/run_detection.series_shard`)
