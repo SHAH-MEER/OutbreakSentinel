@@ -6,7 +6,7 @@ now* — a different problem from forecasting what they'll be next.
 
 ## Status
 
-Phase 1 (Data + EDA) in progress.
+Phase 2 (Detection) in progress.
 
 - [x] Data source selected: CDC NNDSS Weekly Data (state-level, 139
       notifiable diseases, 2022–present) — see [data/README.md](data/README.md)
@@ -15,15 +15,21 @@ Phase 1 (Data + EDA) in progress.
 - [x] Backtest events identified: 2025 Texas measles outbreak (sharp
       point-source spike) and 2024 national pertussis resurgence (gradual
       surge) — see [data/README.md](data/README.md#identified-backtest-events-phase-1)
-- [ ] Detection models (STL-residual baseline, Bayesian changepoint) —
-      Phase 2
+- [x] Detection models implemented and benchmarked head-to-head: STL
+      seasonal-decomposition baseline vs. changepoint detection (`ruptures`)
+      — changepoint ships as primary (86.5% recall / 3.4% FPR / 2-week
+      detection latency on the held-out pertussis event vs. STL's 0%
+      recall). Tuning is latency-aware, not just recall-aware, and the
+      chosen threshold is a deliberately conservative pick off a
+      documented latency-vs-false-positive-rate tradeoff. See
+      [detection/README.md](detection/README.md)
 - [ ] AWS pipeline + Terraform — Phase 3
 - [ ] API + dashboard — Phase 4
 - [ ] CI/CD, monitoring, docs — Phase 5
 
 ## Repo structure
 
-```
+```text
 outbreak-sentinel/
 ├── data/          # ingestion scripts
 ├── detection/      # model + backtesting
