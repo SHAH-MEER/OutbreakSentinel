@@ -58,18 +58,39 @@ if not alerts:
 alerts_df = pd.DataFrame(alerts)
 alerts_df["state_code"] = alerts_df["region"].map(STATE_TO_CODE)
 
+
+def _top_disease_for(region: str) -> str:
+    subset = alerts_df.loc[alerts_df["region"] == region]
+    return subset.loc[subset["severity"].idxmax(), "disease"]
+
+
+# Selection lives in session_state, not a local variable, so it's the
+# single source of truth for BOTH directions: a map click sets it (and
+# reruns so the map's highlight updates immediately), and the dropdowns
+# below are bound to the same keys, so picking a region/disease there
+# updates it too — either one always drives the other, rather than the
+# map only ever feeding the dropdowns one-way.
+if "selected_region" not in st.session_state:
+    top_alert = alerts_df.loc[alerts_df["severity"].idxmax()]
+    st.session_state.selected_region = top_alert["region"]
+    st.session_state.selected_disease = top_alert["disease"]
+
 map_df = (
     alerts_df.dropna(subset=["state_code"])
-    .groupby(["region", "state_code"], as_index=False)["severity"]
-    .max()
+    .sort_values("severity", ascending=False)
+    .groupby(["region", "state_code"], as_index=False)
+    .agg(severity=("severity", "max"), top_disease=("disease", "first"), disease_count=("disease", "count"))
 )
 
 col_map, col_detail = st.columns([3, 2])
 
-clicked_region = None
-
 with col_map:
     st.subheader("Flagged states, by peak severity this week")
+    st.caption(
+        "Color = the single worst-flagged disease per state (hover for what's driving it and how many "
+        "others are flagged there too). Outlined state is the current selection — click another, or use "
+        "the dropdowns, to change it."
+    )
     if map_df.empty:
         st.info("No state-level anomalies in the current sample (national/regional aggregates may still be flagged below).")
     else:
@@ -83,23 +104,58 @@ with col_map:
                 marker_line_width=0.5,
                 colorbar_title="Severity",
                 text=map_df["region"],
-                hovertemplate="%{text}<br>Peak severity: %{z:.1f}<extra></extra>",
+                # Map color is the WORST alert per state — a state with
+                # several flagged diseases still shows one color, so the
+                # tooltip spells out what's actually driving it and how
+                # many other diseases are flagged there too.
+                customdata=map_df[["top_disease", "disease_count"]],
+                hovertemplate=(
+                    "<b>%{text}</b><br>"
+                    "Peak severity: %{z:.1f} (%{customdata[0]})<br>"
+                    "%{customdata[1]} disease(s) flagged this week"
+                    "<extra></extra>"
+                ),
+                showlegend=False,
             )
         )
+        selected_code = STATE_TO_CODE.get(st.session_state.selected_region)
+        if selected_code:
+            # A second, fully transparent choropleth trace containing
+            # only the selected state, purely for its bold outline — a
+            # single Choropleth trace can't style one location
+            # differently from the rest.
+            fig_map.add_trace(
+                go.Choropleth(
+                    locations=[selected_code],
+                    z=[1],
+                    locationmode="USA-states",
+                    colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
+                    showscale=False,
+                    marker_line_color="#1B1F3B",
+                    marker_line_width=3.5,
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
         fig_map.update_layout(geo_scope="usa", margin=dict(l=0, r=0, t=10, b=0), height=450)
         map_event = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", key="map")
         points = (map_event or {}).get("selection", {}).get("points", [])
         if points:
             clicked_region = CODE_TO_STATE.get(points[0].get("location"))
+            if clicked_region and clicked_region != st.session_state.selected_region:
+                st.session_state.selected_region = clicked_region
+                st.session_state.selected_disease = _top_disease_for(clicked_region)
+                st.rerun()  # redraw immediately so the outline moves with this same click
 
 with col_detail:
     st.subheader("Inspect a flagged series")
     region_options = sorted(alerts_df["region"].unique())
-    default_region_idx = region_options.index(clicked_region) if clicked_region in region_options else 0
-    selected_region = st.selectbox("Region (click a state on the map, or pick one)", region_options, index=default_region_idx)
+    selected_region = st.selectbox("Region", region_options, key="selected_region")
 
     disease_options = sorted(alerts_df.loc[alerts_df["region"] == selected_region, "disease"].unique())
-    selected_disease = st.selectbox("Disease", disease_options)
+    if st.session_state.selected_disease not in disease_options:
+        st.session_state.selected_disease = disease_options[0]
+    selected_disease = st.selectbox("Disease", disease_options, key="selected_disease")
 
     series = fetch_series(selected_region, selected_disease)
     if series is None:
